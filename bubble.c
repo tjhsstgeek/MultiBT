@@ -92,6 +92,7 @@ void bubble_remove(struct bubble *b, struct game *g) {
 }
 /**
  * Pop the bubble splitting it into two bubbles.
+ * No children are created if the bubble was too small.
  */
 int bubble_pop(struct bubble *b, struct game *g) {
 	if (b->l <= 1) {
@@ -127,6 +128,10 @@ int bubble_pop(struct bubble *b, struct game *g) {
 	}
 	return 0;
 }
+/**
+ * Called when two bubbles collide.
+ * They may or may not bounce off each other depending on a flag.
+ */
 int bubble_bubble_collision(cpArbiter *arb, struct cpSpace *space, void *data) {
 	struct game *g = data;
 	if (g->data & 1) {
@@ -135,6 +140,14 @@ int bubble_bubble_collision(cpArbiter *arb, struct cpSpace *space, void *data) {
 		return 0;
 	}
 }
+//FIXME move this into bullet, as different bullets may do different damage
+/**
+ * Called when a bubble and popper (bullet) collide.
+ * The bubble will be split in two.
+ */
 int bubble_popper_collision(cpArbiter *arb, struct cpSpace *space, void *data) {
-	//cpCircleShapeGetRadius
+	CP_ARBITER_GET_SHAPES(arb, shape_a, shape_b);
+	struct bubble *p = shape_b->data;
+	cpSpaceAddPostStepCallback(space, bubble_collision_pop, p, data);
+	return 0;
 }

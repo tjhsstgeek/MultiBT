@@ -378,11 +378,10 @@ char *game_gen_buf(struct game *g, uint32_t *len) {
 	return buf;
 }
 int game_leave(struct game *g, struct network_client *nc) {
-	if (linkedlist_add_first(g->p_q, nc->p)) {
+	if (player_remove(nc->p, g)) {
 		ERR_TRACE();
 		return -1;
 	}
-	linkedlist_remove_node(nc->p->node);
 	nc->p->client = 0;
 	nc->p = 0;
 	return 0;
@@ -390,11 +389,10 @@ int game_leave(struct game *g, struct network_client *nc) {
 struct player *game_join(struct game *g, struct network_client *nc) {
 	if (g->p_q->len) {
 		struct player *p = g->p_q->last;
-		if (linkedlist_add_first(g->p_p, p)) {
+		if (player_add(p, g)) {
 			ERR_TRACE();
 			return 0;
 		}
-		linkedlist_remove_last(g->p_q);
 		p->client = nc;
 		return p;
 	}
@@ -423,6 +421,7 @@ uint32_t game_step(uint32_t time, struct game *g) {
 		struct network_client *nc = client->data;
 		if (nc->p) {
 			if (nc->left) {
+				//Free up the leaver's player 
 				if (game_leave(g, nc)) {
 					ERR_TRACE();
 					SDLNet_TCP_Send(nc->s, "\12", 1);
@@ -440,7 +439,7 @@ uint32_t game_step(uint32_t time, struct game *g) {
 			cpBodySetVel(&nc->p->body, cpv(vx, vy));
 		} else {
 			if (!nc->observe) {
-				if (game_join(g, nc)) {
+				if (!game_join(g, nc)) {
 					ERR_TRACE();
 					SDLNet_TCP_Send(nc->s, "\12", 1);
 				}
@@ -472,8 +471,9 @@ void game_return_player(game *g,player *p) {
 	p->node = g->p_q->last;
 }*/
 void game_stop_running(struct game *g) {
-	if (g->timer)
+	if (g->timer) {
 		SDL_RemoveTimer(g->timer);
+	}
 	g->timer = 0;
 	SDL_mutexP(g->n->m);//We are changing things the network depends on
 	linkedlist_node *q = g->p_p->first;
@@ -482,14 +482,24 @@ void game_stop_running(struct game *g) {
 		struct network_client *nc = p->client;
 		if (nc) {
 			nc->p = 0;
-			if (nc->left) {
-				//Remove them from the game.
-			}
 		}
 		p->client = 0;
-		SDLNet_TCP_Send(nc->s,"\7",1);
+		SDLNet_TCP_Send(nc->s, "\7", 1);
 		q = q->next;
-		player_remove(p,g);
+		player_remove(p, g);
+	}
+	//Remove anyone who has left
+	q = g->clients->first;
+	while (q) {
+		struct network_client *nc = q->data;
+		q = q->next;
+		if (nc->left) {
+			linkedlist_remove_object(g->clients, nc);
+			if (!nc->n) {
+				//The client disconnected so this is the end
+				free(nc);
+			}
+		}
 	}
 	SDL_mutexV(g->n->m);
 }
@@ -500,9 +510,10 @@ uint32_t game_start_running(struct game *g) {
 		bubble_add(bubble_create(rand() % 512, rand() % 512,
 		                         rand() % 10, 0, 10, 1), g);
 	}
-	//Add the queued players, so lock 
+	//Add the queued players
 	SDL_mutexP(g->n->m);
 	if (!g->clients->len) {
+		//There's nobody here
 		return 1;
 	}
 	uint32_t len = 0;

@@ -21,20 +21,27 @@ char *network_read_string_1(TCPsocket sock) {
 }
 void network_game_leave(struct network *n, struct network_client *nc) {
 	SDL_mutexP(n->m);
-	if (nc->p)
-		nc->p->client = 0;
-	linkedlist_remove_object(nc->g->clients,nc);
+	//if (nc->p)
+	//	nc->p->client = 0;
+	//linkedlist_remove_object(nc->g->clients, nc);
 	nc->g = 0;
+	//Wait for the game to remove us
+	nc->left = 1;
 	SDL_mutexV(n->m);
 }
 void network_leave(struct network *n, struct network_client *nc) {
 	SDL_mutexP(n->m);//can fail
-	if (nc->p)
-		nc->p->client = 0;
-	if (nc->g)
-		linkedlist_remove_object(nc->g->clients,nc);
-	nc->g = 0;
-	linkedlist_remove_object(n->users,nc);
+	//if (nc->p)
+	//	nc->p->client = 0;
+	linkedlist_remove_object(n->users, nc);
+	if (nc->g) {
+		//linkedlist_remove_object(nc->g->clients, nc);
+		//Let the game remove us
+		nc->left = 1;
+		nc->n = 0;//Aka, we disconnected
+	} else {
+		free(nc);
+	}
 	SDL_mutexV(n->m);
 }
 struct game *network_create_game(struct network *n, FILE *f) {
@@ -103,8 +110,7 @@ int network_listen(void *v) {
 	uint8_t command;
 	while (1) {
 		if (SDLNet_TCP_Recv(sock,&command,1) < 1) {
-			network_leave(n,nc);
-			free(nc);
+			network_leave(n, nc);
 			return 1;
 		}
 		switch (command) {

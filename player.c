@@ -4,6 +4,7 @@
 
 /**
  * Initializes a new player.
+ * The player is placed in the queue of available players.
  */
 struct player *player_init(struct player *p, struct game *g, double x, double y,
                            double w, double h, uint32_t score, uint8_t data) {
@@ -35,7 +36,8 @@ struct player *player_init(struct player *p, struct game *g, double x, double y,
 	return p;
 }
 /**
- * Creates a new player by allocating memory.
+ * Creates a new player by allocating memory and then initializing it. 
+ * \sa player_init
  */
 struct player *player_create(struct game *g, double x, double y, double w,
                              double h, uint32_t score, uint8_t data) {
@@ -47,7 +49,7 @@ struct player *player_create(struct game *g, double x, double y, double w,
 	return player_init(p, g, x, y, w, h, score, data);
 }
 /**
- * Reset the position to starting values.
+ * Reset the player's position to the starting values.
  */
 void player_respawn(struct player *p) {
 	cpBodySetPos(&p->body, cpv(p->x, p->y));
@@ -61,28 +63,33 @@ int player_add(struct player *p, struct game *g) {
 		//Player already used
 		return -2;
 	}
-	linkedlist_remove_node(g->p_q, p->node);
 	if (linkedlist_add_last(g->p_p, p)) {
 		ERR_TRACE();
 		return -1;
 	}
+	linkedlist_remove_node(g->p_q, p->node);
 	p->node = g->p_p->last;
 	p->list = g->p_p;
 	cpSpaceAddBody(g->cp, &p->body);
 	cpSpaceAddShape(g->cp, (struct cpShape *)&p->shape);
 	return 0;
 }
+/**
+ * Removes a player object from the grid.
+ * This means moving him from the playing list to the queue.
+ */
 int player_remove(struct player *p, struct game *g) {
 	if (p->list != g->p_p) {
+		//The player isn't in the playing list
 		return -2;
 	}
-	cpSpaceRemoveShape(g->cp, (struct cpShape *)&p->shape);
-	cpSpaceRemoveBody(g->cp, &p->body);
-	linkedlist_remove_node(g->p_p, p->node);
 	if (linkedlist_add_last(g->p_q, p)) {
 		ERR_TRACE();
 		return -1;
 	}
+	linkedlist_remove_node(g->p_p, p->node);
+	cpSpaceRemoveShape(g->cp, (struct cpShape *)&p->shape);
+	cpSpaceRemoveBody(g->cp, &p->body);
 	p->node = g->p_q->last;
 	return 0;
 }
